@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zero-Wait Payment Radar | Ops & QA Board</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 24px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+    h1 { margin: 0; font-size: 1.5rem; }
+    .subtitle { color: #94a3b8; font-size: 0.9rem; margin-top: 4px; }
+    .btn { background: #2563eb; color: white; border: none; padding: 8px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; font-size: 0.85rem; }
+    .btn:hover { background: #1d4ed8; }
+    .btn-retry { background: #10b981; padding: 5px 10px; font-size: 0.8rem; }
+    .btn-retry:hover { background: #059669; }
+
+    .alert-banner { display: none; background: #7f1d1d; border: 1px solid #ef4444; color: #fecaca; padding: 14px 18px; border-radius: 8px; margin-bottom: 20px; font-weight: 500; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 28px; }
+    .card { background: #1e293b; padding: 20px; border-radius: 10px; border: 1px solid #334155; }
+    .card-label { color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card-value { font-size: 2rem; font-weight: 700; margin-top: 8px; }
+    .card-sub { font-size: 0.85rem; color: #94a3b8; margin-top: 4px; }
+    .green { color: #34d399; }
+    .yellow { color: #fbbf24; }
+    .red { color: #f87171; }
+
+    table { width: 100%; border-collapse: collapse; background: #1e293b; border-radius: 10px; overflow: hidden; }
+    th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid #334155; font-size: 0.9rem; }
+    th { background: #0f172a; color: #94a3b8; font-weight: 600; }
+    .badge { padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+    .badge-stuck { background: #7f1d1d; color: #fca5a5; }
+    .badge-cleared { background: #064e3b; color: #6ee7b7; }
+    .badge-active { background: #78350f; color: #fcd34d; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Zero-Wait Payment Radar</h1>
+        <div class="subtitle">Real-Time PAYG Top-Up & Meter Sync Watchdog</div>
+      </div>
+      <button class="btn" onclick="exportStuckCSV()">Export Stuck Customers (CSV)</button>
+    </header>
+
+    <div id="alertBanner" class="alert-banner"></div>
+
+    <div class="cards">
+      <div class="card">
+        <div class="card-label">Healthy (Cleared)</div>
+        <div id="clearedCount" class="card-value green">0</div>
+        <div class="card-sub">Valve unlocked smoothly</div>
+      </div>
+      <div class="card">
+        <div class="card-label">In Flight / Lagging</div>
+        <div id="activeCount" class="card-value yellow">0</div>
+        <div class="card-sub">Awaiting meter confirmation</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Stuck Customers (&gt;30s)</div>
+        <div id="stuckCount" class="card-value red">0</div>
+        <div id="stuckValue" class="card-sub">KES 0 in limbo</div>
+      </div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Transaction ID</th>
+          <th>Meter / Account</th>
+          <th>Region</th>
+          <th>Amount</th>
+          <th>Current Stage</th>
+          <th>Wait Time</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="txnTable"></tbody>
+    </table>
+  </div>
+
+  <script>
+    let latestStuck = [];
+
+    async function refreshDashboard() {
+      const res = await fetch('/status');
+      const data = await res.json();
+      const txns = data.transactions;
+
+      const cleared = txns.filter(t => t.status === 'Cleared');
+      const stuck = txns.filter(t => t.is_stuck === 1);
+      const active = txns.filter(t => t.status !== 'Cleared' && t.is_stuck === 0);
+      latestStuck = stuck;
+
+      const stuckKes = stuck.reduce((sum, t) => sum + t.amount, 0);
+
+      document.getElementById('clearedCount').textContent = cleared.length;
+      document.getElementById('activeCount').textContent = active.length;
+      document.getElementById('stuckCount').textContent = stuck.length;
+      document.getElementById('stuckValue').textContent = `KES ${stuckKes.toLocaleString()} in limbo`;
+
+      // Show Incident Banner if 3+ customers are stuck
+      const banner = document.getElementById('alertBanner');
+      if (stuck.length >= 3) {
+        const topRegion = stuck[0].region;
+        const topStage = stuck[0].status;
+        banner.style.display = 'block';
+        banner.textContent = `INCIDENT DETECTED: ${stuck.length} customers stuck (KES ${stuckKes} total) — concentrated around ${topRegion} at stage "${topStage}".`;
+      } else {
+        banner.style.display = 'none';
+      }
+
+      // Sort stuck transactions to the top
+      const sorted = [...stuck, ...active, ...cleared];
+      const tbody = document.getElementById('txnTable');
+      tbody.innerHTML = sorted.map(t => {
+        const waitSec = Math.floor(((t.status === 'Cleared' ? t.updated_at : Date.now()) - t.created_at) / 1000);
+        const badgeClass = t.is_stuck === 1 ? 'badge-stuck' : t.status === 'Cleared' ? 'badge-cleared' : 'badge-active';
+        const stateLabel = t.is_stuck === 1 ? `STUCK (${t.status})` : t.status;
+        const actionBtn = t.is_stuck === 1
+          ? `<button class="btn btn-retry" onclick="retryTxn('${t.transaction_id}')">Retry Sync</button>`
+          : '—';
+
+        return `
+          <tr>
+            <td><strong>${t.transaction_id}</strong></td>
+            <td>${t.customer_ref}</td>
+            <td>${t.region}</td>
+            <td>KES ${t.amount}</td>
+            <td><span class="badge ${badgeClass}">${stateLabel}</span></td>
+            <td>${waitSec}s</td>
+            <td>${actionBtn}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    async function retryTxn(transaction_id) {
+      await fetch('/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transaction_id, status: 'Cleared' })
+      });
+      refreshDashboard();
+    }
+
+    function exportStuckCSV() {
+      if (latestStuck.length === 0) return alert('No stuck customers right now!');
+      const rows = ['TransactionID,MeterRef,Region,Amount,Stage', ...latestStuck.map(t => `${t.transaction_id},${t.customer_ref},${t.region},${t.amount},${t.status}`)];
+      const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `stuck_customers_${Date.now()}.csv`;
+      a.click();
+    }
+
+    refreshDashboard();
+    setInterval(refreshDashboard, 2500);
+  </script>
+</body>
+</html>
