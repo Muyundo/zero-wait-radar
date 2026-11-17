@@ -13,6 +13,7 @@ async function sendEvent(payload: {
   transaction_id: string;
   customer_ref: string;
   region: string;
+  firmware_version: string;
   amount: number;
   status: string;
 }) {
@@ -22,59 +23,60 @@ async function sendEvent(payload: {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-  } catch (err) {
+  } catch {
     console.error('Failed to reach Watchdog server. Is server.ts running?');
   }
 }
 
 async function simulateSinglePayment(idNum: number) {
-  const txnId = `MPESA-${1000 + idNum}`;
+  const txnId = `MPESA-${2000 + idNum}`;
   const meterRef = `MTR-${Math.floor(10000 + Math.random() * 90000)}`;
   const region = randomItem(REGIONS);
   const amount = randomItem(AMOUNTS);
 
-  // Decide the fate of this transaction
   const roll = Math.random();
-  const behavior = roll < 0.70 ? 'NORMAL' : roll < 0.85 ? 'SLOW' : 'STUCK';
+  const scenario =
+    roll < 0.60 ? 'NORMAL' :
+    roll < 0.80 ? 'FORGOT_PRESS' :
+    'FIRMWARE_BUG';
 
-  console.log(`[NEW] ${txnId} | ${meterRef} | ${region} | KES ${amount} (${behavior})`);
+  const firmware = scenario === 'FIRMWARE_BUG' ? 'v2.4.2-beta' : 'v2.4.1';
+
+  console.log(`[NEW] ${txnId} | ${meterRef} | ${region} | FW:${firmware} | KES ${amount} (${scenario})`);
 
   // Step 1: Verified (M-Pesa received)
-  await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, amount, status: 'Verified' });
+  await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, firmware_version: firmware, amount, status: 'Verified' });
   await sleep(1000);
 
-  // Step 2: Processing (Published to stream)
-  await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, amount, status: 'Processing' });
+  // Scenario A: Customer paid from matatu / hasn't long-pressed meter yet
+  if (scenario === 'FORGOT_PRESS') {
+    await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, firmware_version: firmware, amount, status: 'Awaiting_Meter_Wakeup' });
+    console.log(`  ⏳ ${txnId} waiting for customer to long-press meter...`);
+    return;
+  }
 
-  // Simulate getting stuck right after Processing (half of stuck cases)
-  if (behavior === 'STUCK' && Math.random() < 0.5) {
-    console.log(`  ${txnId} stalled at Processing!`);
+  // Step 2: Processing
+  await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, firmware_version: firmware, amount, status: 'Processing' });
+  await sleep(1500);
+
+  // Step 3: In_Progress (Meter awake & processing credit)
+  await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, firmware_version: firmware, amount, status: 'In_Progress' });
+
+  // Scenario B: Buggy beta firmware hangs during credit apply
+  if (scenario === 'FIRMWARE_BUG') {
+    console.log(`  🐛 ${txnId} hung on firmware ${firmware} in ${region}!`);
     return;
   }
 
   await sleep(1500);
 
-  // Step 3: In_Progress (Command sent to meter)
-  await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, amount, status: 'In_Progress' });
-
-  // Simulate getting stuck waiting for meter acknowledgment
-  if (behavior === 'STUCK') {
-    console.log(`   ${txnId} stalled at In_Progress (meter not responding)!`);
-    return;
-  }
-
-  // Slow vs Normal completion delay
-  const finalDelay = behavior === 'SLOW' ? 18000 : 1500;
-  await sleep(finalDelay);
-
-  // Step 4: Cleared (Valve unlocked)
-  await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, amount, status: 'Cleared' });
-  console.log(`  ${txnId} Cleared!`);
+  // Step 4: Cleared
+  await sendEvent({ transaction_id: txnId, customer_ref: meterRef, region, firmware_version: firmware, amount, status: 'Cleared' });
+  console.log(`  ✅ ${txnId} Cleared!`);
 }
 
-// Fire a new payment every 3 seconds
 let counter = 1;
-console.log('Starting M-Gas Dinner Rush Simulator... (Press Ctrl+C to stop)\n');
+console.log('Starting M-Gas Simulator (with Long-Press & Firmware Rollout scenarios)...\n');
 
 setInterval(() => {
   simulateSinglePayment(counter++);
