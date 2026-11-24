@@ -1,8 +1,6 @@
+import { AMOUNTS, REGIONS } from './simulator/config.js';
 import { sendEvent } from './simulator/event-client.js';
 import { randomItem } from './simulator/random.js';
-
-const REGIONS = ['Embakasi', 'Kasarani', 'Kawangware', 'Zimmerman', 'Rongai'];
-const AMOUNTS = [20, 30, 50, 100, 150, 250];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
