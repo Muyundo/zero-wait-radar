@@ -1,13 +1,10 @@
 import { sendEvent } from './simulator/event-client.js';
+import { randomItem } from './simulator/random.js';
 
 const REGIONS = ['Embakasi', 'Kasarani', 'Kawangware', 'Zimmerman', 'Rongai'];
 const AMOUNTS = [20, 30, 50, 100, 150, 250];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function randomItem<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)]!;
-}
 
 async function simulateSinglePayment(idNum: number) {
   const txnId = `MPESA-${2000 + idNum}`;
