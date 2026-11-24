@@ -40,15 +40,19 @@ Install dependencies:
 npm install
 ```
 
-Start the server:
+Start the server and simulator together:
 
 ```sh
-npx tsx server.ts
+node start.mjs
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-Generate sample transactions in a second terminal:
+To run the processes separately instead, open two terminals:
+
+```sh
+npx tsx server.ts
+```
 
 ```sh
 npx tsx simulator.ts
@@ -56,13 +60,14 @@ npx tsx simulator.ts
 
 Stop a process with `Ctrl+C`.
 
-The server creates `radar.db` in the current working directory. The simulator submits one synthetic payment every three seconds.
+The server creates `radar.db` in the current working directory. The simulator submits one synthetic payment every three seconds. The combined starter forwards output from both processes and stops both when `Ctrl+C` is pressed.
 
 ## Project structure
 
 ```text
 .
 |-- server.ts                  # Application startup
+|-- start.mjs                  # Starts the server and simulator together
 |-- server/
 |   |-- database.ts            # SQLite schema and data operations
 |   |-- routes.ts              # HTTP endpoints and incident diagnosis
@@ -94,7 +99,21 @@ flowchart LR
     DB --> SQLITE[(radar.db)]
     ENTRY[server.ts] --> ROUTES
     ENTRY --> WD
+    START[start.mjs] --> ENTRY
+    START --> SIM
 ```
+
+## Combined starter: `start.mjs`
+
+The starter is a small Node.js process coordinator. It uses Node's built-in `spawn` function to run the existing `server.ts` and `simulator.ts` commands with their output attached to the current terminal.
+
+It does not duplicate application behavior:
+
+- The server remains responsible for HTTP handling, database access, and the watchdog.
+- The simulator remains responsible for creating sample payment scenarios.
+- `start.mjs` only launches, monitors, and stops both child processes.
+
+If either child process exits, the starter stops the other process. When the user presses `Ctrl+C`, the starter forwards the termination signal to both. This prevents the simulator or server from being left running on its own.
 
 ## Server startup: `server.ts`
 
