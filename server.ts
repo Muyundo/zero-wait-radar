@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 const app = express();
 app.use(express.json());
+app.use(express.static('public'));
 
 // Serve the dashboard at http://localhost:3000
 app.get('/', (_req, res) => {
