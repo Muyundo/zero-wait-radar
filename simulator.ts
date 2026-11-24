@@ -1,4 +1,4 @@
-const SERVER_URL = 'http://localhost:3000/events';
+import { sendEvent } from './simulator/event-client.js';
 
 const REGIONS = ['Embakasi', 'Kasarani', 'Kawangware', 'Zimmerman', 'Rongai'];
 const AMOUNTS = [20, 30, 50, 100, 150, 250];
@@ -7,25 +7,6 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function randomItem<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
-}
-
-async function sendEvent(payload: {
-  transaction_id: string;
-  customer_ref: string;
-  region: string;
-  firmware_version: string;
-  amount: number;
-  status: string;
-}) {
-  try {
-    await fetch(SERVER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch {
-    console.error('Failed to reach Watchdog server. Is server.ts running?');
-  }
 }
 
 async function simulateSinglePayment(idNum: number) {
