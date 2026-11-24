@@ -1,6 +1,9 @@
 import express from 'express';
+import { clearTransactions } from './server/database.js';
 import { registerRoutes } from './server/routes.js';
 import { startWatchdog } from './server/watchdog.js';
+
+clearTransactions();
 
 const app = express();
 app.use(express.json());

@@ -39,6 +39,10 @@ db.exec(`
   )
 `);
 
+export function clearTransactions() {
+  db.prepare('DELETE FROM transactions').run();
+}
+
 export function recordEvent(event: TransactionEvent, now: number) {
   const { transaction_id, customer_ref, region, firmware_version, amount, status } = event;
   const existing = db

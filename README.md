@@ -60,7 +60,7 @@ npx tsx simulator.ts
 
 Stop a process with `Ctrl+C`.
 
-The server creates `radar.db` in the current working directory. The simulator submits one synthetic payment every three seconds. The combined starter forwards output from both processes and stops both when `Ctrl+C` is pressed.
+The server creates `radar.db` in the current working directory and clears all transaction rows on startup, so each run begins with an empty dashboard. The simulator submits one synthetic payment every three seconds. The combined starter forwards output from both processes and stops both when `Ctrl+C` is pressed.
 
 ## Project structure
 
@@ -113,7 +113,7 @@ It does not duplicate application behavior:
 - The simulator remains responsible for creating sample payment scenarios.
 - `start.mjs` only launches, monitors, and stops both child processes.
 
-If either child process exits, the starter stops the other process. When the user presses `Ctrl+C`, the starter forwards the termination signal to both. This prevents the simulator or server from being left running on its own.
+If either child process exits, the starter stops the other process. When the user presses `Ctrl+C`, the starter terminates each complete process tree. This prevents hidden `tsx` children from leaving the simulator or server running on its own.
 
 ## Server startup: `server.ts`
 
@@ -154,6 +154,10 @@ This module owns the SQLite connection, schema, queries, and transaction updates
 The module opens `radar.db` and runs `CREATE TABLE IF NOT EXISTS transactions`. This makes startup repeatable: an existing database is preserved, while a missing database and table are created automatically.
 
 ### Functions
+
+#### `clearTransactions()`
+
+Deletes all stored transaction rows before the server starts accepting requests. The database file and schema remain in place, but the dashboard starts each run without data from an earlier run.
 
 #### `recordEvent(event, now)`
 
